@@ -1,0 +1,57 @@
+name: $(Build.SourceBranch)-$(date:yyyyMMdd)$(rev:.r)
+
+trigger:
+  branches:
+    include:
+      - '*'
+  tags:
+    include:
+      - '*'
+
+pool:
+  vmImage: 'ubuntu-latest'
+
+variables:
+  imageName: 'eu.gcr.io/prod-bip/ssb/microdata/job-db'
+  repoName: 'prod-bip/ssb/microdata/job-db'
+  fullSha: '$(Build.SourceVersion)'
+  isMaster: $[eq(variables['Build.SourceBranch'], 'refs/heads/master')]
+  latestTag: 'bipLatest'
+
+stages:
+
+- stage: build
+  displayName: Build Docker Image and push to GCR
+  jobs:
+    - job: buildAndPush
+      displayName: Build and Push to GCR
+
+      steps:
+        - task: Docker@2
+          displayName: 'Docker build'
+          inputs:
+            repository: $(imageName)
+            command: 'build'
+            Dockerfile: 'Dockerfile'
+            arguments: '--build-arg BUILD_NUMBER=$(Build.BuildId)'
+            tags: |
+              $(Build.SourceBranchName)-$(fullSha)
+              $(latestTag)
+        # Authenticate Docker to GCR using predefined service connection
+        - task: Docker@2
+          displayName: 'Login to GCR'
+          inputs:
+            command: login
+            containerRegistry: gcrServiceConnection-Microdatano
+
+        # Push Docker Image to GCR
+        - task: Docker@2
+          displayName: 'Push image to GCR'
+          inputs:
+            ContainerRegistry: |
+              gcrServiceConnection-Microdatano
+            repository: $(repoName)
+            command: 'push'
+            tags: |
+              $(Build.SourceBranchName)-$(fullSha)
+              $(latestTag)
